@@ -1,36 +1,23 @@
 %h{
+#include <gdk/gdk.h>
 #include <gtk/gtk.h>
-
-struct _SquiddoBox;
+#include "squiddo-box.h"
 %}
 
 %{
 #include <math.h>
 #include <string.h>
-#include <gdk/gdk.h>
 #include <cairo.h>
 
 #define SPEED_X 0.04
 #define SPEED_Y 0.07
-#define BOX_ASPECT 2.0
-
-typedef struct _SquiddoBox Box;
-struct _SquiddoBox {
-	GtkWidget *owner;
-	gchar *path;
-	gchar *collation_key;
-	PangoLayout *label;
-	gboolean items_loaded;
-	guint n_items;
-	struct _SquiddoBox **items;
-};
 %}
 
 class Squiddo:Control from Gtk:Widget {
 
 protected gboolean active = FALSE;
 protected Gdk:Cursor *null_cursor = NULL unrefwith gdk_cursor_unref;
-protected struct _SquiddoBox *box = NULL unrefwith self_box_destroy;
+protected Squiddo:Box *box = NULL unrefwith g_object_unref;
 protected double y = 0.0;
 protected double log_scale = 0.0;
 
@@ -44,7 +31,7 @@ init(self) {
 		pm, pm, &dummy_color, &dummy_color, 0, 0
 	);
 	g_object_unref(G_OBJECT(pm));
-	self->box = self_box_new(GTK_WIDGET(self), "/");
+	self->box = squiddo_box_new(GTK_WIDGET(self), "/");
 	/* Just to make sure -- we want a window. */
 	GTK_WIDGET_UNSET_FLAGS(wid, GTK_NO_WINDOW);
 }
@@ -88,14 +75,9 @@ override (Gtk:Widget) gboolean expose_event(
 	);
 	/* Draw boxes */
 	box_height = (gint)(height*exp(SELF(self)->log_scale));
-	gdk_draw_rectangle(
-		self->window, self->style->fg_gc[GTK_WIDGET_STATE(self)],
-		FALSE, width - BOX_ASPECT*box_height, SELF(self)->y,
-		BOX_ASPECT*box_height, box_height
-	);
-	self_box_draw(
-		SELF(self)->box, &event->area, SELF(self)->y,
-		box_height, width, height
+	squiddo_box_draw(
+		SELF(self)->box, &event->area, TRUE,
+		SELF(self)->y, box_height, width, height
 	);
 	/* Draw the rubber arrow */
 	if(SELF(self)->active) {
@@ -161,7 +143,7 @@ override (Gtk:Widget) void style_set(
 ) {
 	PARENT_HANDLER(self, prev_style);
 	if(SELF(self)->box != NULL) {
-		self_box_update_pango_context(SELF(self)->box);
+		squiddo_box_update_pango_context(SELF(self)->box);
 	}
 }
 
@@ -170,7 +152,7 @@ override (Gtk:Widget) void direction_changed(
 ) {
 	PARENT_HANDLER(self, prev_direction);
 	if(SELF(self)->box != NULL) {
-		self_box_update_pango_context(SELF(self)->box);
+		squiddo_box_update_pango_context(SELF(self)->box);
 	}
 }
 
@@ -189,148 +171,6 @@ private gboolean update(self) {
 		- (double)y*SPEED_Y;
 	gtk_widget_queue_draw(GTK_WIDGET(self));
 	return TRUE;
-}
-
-/*
- * Box invariants:
- * (!items_loaded || n_items == 0) <=> items == NULL
- * n_items > 0 => items_loaded
- * owner != NULL
- * path != NULL
- * label != NULL
- */
-
-protected Box *box_new(
-	Gtk:Widget *owner (check null), const gchar *path (check null)
-) {
-	Box *ret = g_new(Box, 1);
-	gchar *name;
-	ret->owner = owner;
-	ret->path = g_strdup(path);
-	name = g_path_get_basename(ret->path);
-	ret->collation_key = g_utf8_collate_key_for_filename(name, -1);
-	ret->label = gtk_widget_create_pango_layout(owner, name);
-	g_free(name);
-	ret->items_loaded = FALSE;
-	ret->items = NULL;
-	ret->n_items = 0;
-	return ret;
-}
-
-protected void box_destroy(Box *box) {
-	guint i;
-	if(box == NULL) return;
-	if(box->label != NULL) g_object_unref(box->label);
-	g_free(box->path);
-	g_free(box->collation_key);
-	if(box->items_loaded && box->items != NULL) {
-		for(i = 0; i < box->n_items; i++) {
-			self_box_destroy(box->items[i]);
-		}
-		g_free(box->items);
-	}
-	g_free(box);
-}
-
-protected void box_update_pango_context(Box *box) {
-	guint i;
-	pango_layout_context_changed(box->label);
-	if(!box->items_loaded || box->n_items == 0) return;
-	for(i = 0; i < box->n_items; i++) {
-		self_box_update_pango_context(box->items[i]);
-	}
-}
-
-protected gint box_compare_names(
-	Box *const *b1, Box *const *b2, gpointer unused
-) {
-	return strcmp((*b1)->collation_key, (*b2)->collation_key);
-}
-
-protected void box_ensure_items_loaded(Box *box) {
-	GDir *dir;
-	const gchar *name;
-	if(box->items_loaded) return;
-	box->items_loaded = TRUE;
-	dir = g_dir_open(box->path, 0, NULL);
-	box->n_items = 0;
-	if(dir == NULL) return;
-	for(;;) {
-		name = g_dir_read_name(dir);
-		if(name == NULL) break;
-		box->n_items++;
-	}
-	if(box->n_items > 0) {
-		guint i;
-		gchar *path;
-		g_dir_rewind(dir);
-		box->items = g_new(Box*, box->n_items);
-		for(i = 0; i < box->n_items; i++) {
-			name = g_dir_read_name(dir);
-			path = g_build_filename(box->path, name, NULL);
-			box->items[i] = self_box_new(
-				box->owner, path
-			);
-			g_free(path);
-		}
-		g_qsort_with_data(
-			box->items, box->n_items, sizeof(box->items[0]),
-			(GCompareDataFunc)squiddo_control_box_compare_names,
-			NULL
-		);
-	}
-	g_dir_close(dir);
-}
-
-protected void box_draw(
-	Box *box, Gdk:Rectangle *area,
-	gint y, guint height, guint win_width, guint win_height
-) {
-	GtkWidget *owner = box->owner;
-	guint width = (guint)(height*BOX_ASPECT);
-	int label_height;
-	pango_layout_get_pixel_size(box->label, NULL, &label_height);
-	gtk_paint_layout(
-		owner->style, owner->window, GTK_WIDGET_STATE(owner), TRUE,
-		area, owner, NULL, win_width - width,
-		y + (height - label_height)/2, box->label
-	);
-	self_box_ensure_items_loaded(box);
-	self_box_draw_items(box, area, y, height, win_width, win_height);
-}
-
-protected void box_draw_items(
-	Box *box, Gdk:Rectangle *area,
-	gint y, guint height, guint win_width, guint win_height
-) {
-	GtkWidget *owner = box->owner;
-	guint n_items = box->n_items;
-	double item_height = (double)height/n_items;
-	guint item_width = (guint)(item_height*BOX_ASPECT);
-	guint i;
-	if(height >= 8*n_items) {
-		for(i = 0; i < n_items; i++) {
-			gint item_y = y + (gint)(i*item_height);
-			if(
-				item_y >= (gint)win_height ||
-				item_y + (gint)item_height < 0
-			) continue;
-			self_box_draw(
-				box->items[i], area, item_y, item_height,
-				win_width, win_height
-			);
-		}
-	}
-	if(height < 2*n_items) return;
-	for(i = 1; i < n_items; i++) {
-		gint item_y = (gint)(y + i*item_height);
-		gdk_draw_line(
-			owner->window,
-			owner->style->fg_gc[GTK_WIDGET_STATE(owner)],
-			item_width > win_width ? 0 : win_width - item_width,
-			item_y, win_width, item_y
-		);
-	}
 }
 
 }

@@ -1,0 +1,251 @@
+%h{
+#include <glib.h>
+#include <gtk/gtk.h>
+#include <pango/pango.h>
+
+#define SQUIDDO_BOX_ASPECT 2.0
+
+/*
+ * This is a private friend class of SquiddoControl.  Anyone who uses it
+ * carelessly risks object leaks and general destruction.
+ */
+%}
+
+%{
+/*
+ * class invariants:
+ * (!items_loaded || n_items == 0) <=> items == NULL
+ * n_items > 0 => items_loaded
+ * owner != NULL
+ * path != NULL
+ * collation_key != NULL
+ * label != NULL
+ */
+%}
+
+class Squiddo:Box from G:Object {
+
+protected const gchar *path = NULL destroywith g_free;
+property STRING path
+	(
+		nick = "path",
+		blurb = "The full path of the directory this box represents",
+		default_value = "/",
+		flags = CONSTRUCT_ONLY,
+		export
+	)
+	set {
+		self->path = g_value_dup_string(VAL);
+		if(self->label == NULL && self->owner != NULL) {
+			self_create_label_and_collation_key(self);
+		}
+	}
+	get { g_value_set_string(VAL, self->path); };
+
+protected Gtk:Widget *owner = NULL unref { VAR = NULL; /* trust me */ };
+property OBJECT owner
+	(
+		nick = "owner",
+		blurb = "The widget this box will be displayed on",
+		object_type = GTK_TYPE_WIDGET,
+		flags = CONSTRUCT,
+		export
+	)
+	set {
+		self->owner = g_value_get_object(VAL);
+		if(self->label == NULL && self->path != NULL) {
+			self_create_label_and_collation_key(self);
+		}
+	}
+	get { g_value_set_object(VAL, self->owner); };
+
+protected gchar *collation_key = NULL destroywith g_free;
+protected Pango:Layout *label = NULL unrefwith g_object_unref;
+protected gboolean items_loaded = FALSE;
+protected guint n_items = 0;
+protected Squiddo:Box **items = NULL destroywith g_free;
+
+public Squiddo:Box *new(
+	Gtk:Widget *owner (check null), const gchar *path (check null)
+) {
+	return GET_NEW_VARG(
+		SQUIDDO_BOX_PROP_OWNER(G_OBJECT(owner)), "path", path, NULL
+	);
+}
+
+public void dispose(G:Object *self (check null type)) {
+	Self *self_self = SELF(self);
+	if(self_self->items != NULL) {
+		guint i;
+		for(i = 0; i < self_self->n_items; i++) {
+			if(self_self->items[i] == NULL) continue;
+			g_object_unref(G_OBJECT(self_self->items[i]));
+			self_self->items[i] = NULL;
+		}
+	}
+}
+
+protected void create_label_and_collation_key(self) {
+	gchar *name;
+	g_return_if_fail(self->label == NULL);
+	g_return_if_fail(self->collation_key == NULL);
+	g_return_if_fail(self->path != NULL);
+	name = g_filename_display_basename(self->path);
+	self->collation_key = g_utf8_collate_key_for_filename(name, -1);
+	self->label = gtk_widget_create_pango_layout(self->owner, name);
+	g_free(name);
+	pango_layout_set_ellipsize(self->label, PANGO_ELLIPSIZE_END);
+}
+
+protected gint compare_names(
+	Self *const *b1, Self *const *b2, gpointer unused
+) {
+	return strcmp((*b1)->collation_key, (*b2)->collation_key);
+}
+
+protected void ensure_items_loaded(self) {
+	GDir *dir;
+	if(self->items_loaded) return;
+	self->items_loaded = TRUE;
+	g_return_if_fail(self->n_items == 0);
+	dir = g_dir_open(self->path, 0, NULL);
+	if(dir == NULL) return;
+	for(;;) {
+		const gchar *name = g_dir_read_name(dir);
+		if(name == NULL) break;
+		self->n_items++;
+	}
+	if(self->n_items > 0) {
+		guint i;
+		self->items = g_new(Self*, self->n_items);
+		g_dir_rewind(dir);
+		for(i = 0; i < self->n_items; i++) {
+			const gchar *name = g_dir_read_name(dir);
+			gchar *path = g_build_filename(self->path, name, NULL);
+			self->items[i] = self_new(self->owner, path);
+			g_free(path);
+		}
+		g_qsort_with_data(
+			self->items, self->n_items, sizeof(self->items[0]),
+			(GCompareDataFunc)squiddo_box_compare_names,
+			NULL
+		);
+	}
+	g_dir_close(dir);
+}
+
+protected void unload_items(self) {
+	guint i;
+	if(!self->items_loaded) return;
+	if(self->items == NULL) return;
+	for(i = 0; i < self->n_items; i++) {
+		if(self->items[i] == NULL) continue;
+		g_object_unref(G_OBJECT(self->items[i]));
+	}
+	g_free(self->items);
+	self->items = NULL;
+	self->n_items = 0;
+}
+
+public void draw(
+	self, Gdk:Rectangle *area, gboolean draw_bottom,
+	gint y, gint height (check >= 0),
+	gint win_width (check > 0), gint win_height (check > 0)
+) {
+	GtkWidget *owner = self->owner;
+	GdkGC *fg_gc = owner->style->fg_gc[GTK_WIDGET_STATE(owner)];
+	gint width = (gint)(height*SQUIDDO_BOX_ASPECT);
+	gint x = win_width - width;
+	gint corner_size = height/2;
+	int label_height;
+	if(height < 2) return; /* No point drawing anything */
+	if(y >= 0) {
+		gdk_draw_line(
+			owner->window, fg_gc, x + corner_size/2, y, win_width, y
+		);
+	}
+	if(draw_bottom && y + height < win_height) {
+		gdk_draw_line(
+			owner->window, fg_gc, x + corner_size/2, y + height,
+			win_width, y + height
+		);
+	}
+	if(x + corner_size >= 0) {
+		gdk_draw_arc(
+			owner->window, fg_gc, FALSE, x, y,
+			corner_size, corner_size, 90*64, 90*64
+		);
+		gdk_draw_arc(
+			owner->window, fg_gc, FALSE,
+			x, y + height - corner_size,
+			corner_size, corner_size, 180*64, 90*64
+		);
+	}
+	if(x >= 0) {
+		gdk_draw_line(
+			owner->window, fg_gc, x, y + corner_size/2,
+			x, y + height - corner_size/2
+		);
+	}
+	if(height < 8) return; /* No point drawing label or children */
+	self_ensure_items_loaded(self);
+	switch(self->n_items) {
+	case 0:
+		pango_layout_set_width(self->label, width*PANGO_SCALE);
+		break;
+	case 1:
+		pango_layout_set_width(self->label, width/2*PANGO_SCALE);
+		break;
+	default:
+		pango_layout_set_width(
+			self->label,
+			(width - width/self->n_items - 1)*PANGO_SCALE
+		);
+	}
+	pango_layout_get_pixel_size(self->label, NULL, &label_height);
+	gtk_paint_layout(
+		owner->style, owner->window, GTK_WIDGET_STATE(owner), TRUE,
+		area, owner, NULL, win_width - width,
+		y + (height - label_height)/2, self->label
+	);
+	self_draw_items(self, area, y, height, win_width, win_height);
+}
+
+public void draw_items(
+	self, Gdk:Rectangle *area, gint y, gint height (check >= 0),
+	gint win_width (check > 0), gint win_height (check > 0)
+) {
+	guint n_items = self->n_items;
+	double item_height = n_items < 2 ? height/2.0 : (double)height/n_items;
+	guint i;
+	if(n_items == 0) return;
+	else if(n_items == 1) {
+		self_draw(
+			self->items[0], area, TRUE, y + height/4, item_height,
+			win_width, win_height
+		);
+		return;
+	}
+	for(i = 0; i < n_items; i++) {
+		gint item_y = y + (gint)(i*item_height);
+		if(
+			item_y >= (gint)win_height ||
+			item_y + (gint)item_height < 0
+		) continue;
+		self_draw(
+			self->items[i], area, FALSE, item_y, item_height,
+			win_width, win_height
+		);
+	}
+}
+
+public void update_pango_context(self) {
+	guint i;
+	pango_layout_context_changed(self->label);
+	if(!self->items_loaded || self->n_items == 0) return;
+	for(i = 0; i < self->n_items; i++) {
+		self_update_pango_context(self->items[i]);
+	}
+}
+
+}

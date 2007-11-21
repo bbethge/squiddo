@@ -5,7 +5,7 @@ override CFLAGS += -Wall $(shell pkg-config gtk+-2.0 --cflags) \
 override LDFLAGS += $(shell pkg-config gtk+-2.0 --libs) -lm
 GOB := gob2
 GOB_FLAGS += --no-touch --no-private-header
-GOB_SOURCES := squiddo-window.gob squiddo-control.gob
+GOB_SOURCES := squiddo-window.gob squiddo-control.gob squiddo-box.gob
 GENERATED_C_SOURCES := $(GOB_SOURCES:.gob=.c)
 GENERATED_HEADERS := $(GOB_SOURCES:.gob=.h)
 C_SOURCES := main.c $(GENERATED_C_SOURCES)
@@ -24,9 +24,6 @@ include $(C_SOURCES:.c=.d)
 
 %.c %.h: %.gob
 	$(GOB) $(GOB_FLAGS) $^
-
-#main.o: squiddo-window.h
-#squiddo-window.o: squiddo-control.h
 
 .SECONDARY: $(GENERATED_C_SOURCES)
 

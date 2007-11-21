@@ -1,0 +1,149 @@
+%h{
+#include <gtk/gtk.h>
+#include "squiddo-box.h"
+%}
+
+%{
+#include <math.h>
+#include <gdk/gdk.h>
+#include <cairo.h>
+
+#define SPEED_X 0.04
+#define SPEED_Y 0.07
+%}
+
+class Squiddo:Control from Gtk:Widget {
+
+protected gboolean active = FALSE;
+protected Gdk:Cursor *null_cursor = NULL unrefwith gdk_cursor_unref;
+protected Squiddo:Box *box = NULL unrefwith g_object_unref;
+protected double y = 0.0;
+protected double log_scale = 0.0;
+
+init(self) {
+	GtkWidget *wid = GTK_WIDGET(self);
+	/* Create a cursor with no pixels in it */
+	const char zero = 0;
+	GdkPixmap *pm = gdk_bitmap_create_from_data(NULL, &zero, 1, 1);
+	GdkColor dummy_color = { 0, };
+	self->null_cursor = gdk_cursor_new_from_pixmap(
+		pm, pm, &dummy_color, &dummy_color, 0, 0
+	);
+	g_object_unref(G_OBJECT(pm));
+	self->box = squiddo_box_new("/");
+	/* Just to make sure -- we want a window. */
+	GTK_WIDGET_UNSET_FLAGS(wid, GTK_NO_WINDOW);
+}
+
+public Gtk:Widget *new(void) {
+	Self *ret = GET_NEW;
+	return GTK_WIDGET(ret);
+}
+
+override (Gtk:Widget) void realize(Gtk:Widget *self) {
+	GdkWindowAttr win_attr;
+	GTK_WIDGET_SET_FLAGS(self, GTK_REALIZED);
+	win_attr.window_type = GDK_WINDOW_CHILD;
+	win_attr.x = self->allocation.x;
+	win_attr.y = self->allocation.y;
+	win_attr.width = self->allocation.width;
+	win_attr.height = self->allocation.height;
+	win_attr.wclass = GDK_INPUT_OUTPUT;
+	win_attr.event_mask = gtk_widget_get_events(self);
+	win_attr.event_mask |= GDK_POINTER_MOTION_MASK | GDK_EXPOSURE_MASK |
+		GDK_BUTTON_PRESS_MASK;
+	self->window = gdk_window_new(
+		gtk_widget_get_parent_window(self),
+		&win_attr, GDK_WA_X | GDK_WA_Y
+	);
+	gdk_window_set_user_data(self->window, self);
+	self->style = gtk_style_attach(self->style, self->window);
+}
+
+override (Gtk:Widget) gboolean expose_event(
+	Gtk:Widget *self (check null type), Gdk:Event:Expose *event
+) {
+	cairo_t *cr = gdk_cairo_create(self->window);
+	gint width = self->allocation.width;
+	gint height = self->allocation.height;
+	gint x, y;
+	/* Draw the background */
+	cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+	cairo_paint(cr);
+	/* Draw boxes */
+	cairo_set_source_rgb(cr, 0.0, 0.0, 0.0);
+	squiddo_box_draw(
+		SELF(self)->box, cr, SELF(self)->y,
+		SELF(self)->y + height*exp(SELF(self)->log_scale), width, height
+	);
+	/* Draw the rubber arrow */
+	gtk_widget_get_pointer(self, &x, &y);
+	cairo_set_source_rgba(
+		cr, 0.0, 0.5, 0.0, SELF(self)->active ? 1.0 : 0.15
+	);
+	self_draw_arrow(cr, width/2.0, height/2.0, x, y);
+	cairo_destroy(cr);
+	return TRUE;
+}
+
+private void draw_arrow(
+	cairo_t *cr, double x1, double y1, double x2, double y2
+) {
+	cairo_move_to(cr, x1, y1);
+	cairo_line_to(cr, x2, y2);
+	cairo_save(cr);
+	cairo_translate(cr, x2, y2);
+	cairo_rotate(cr, atan2(y2 - y1, x2 - x1));
+	cairo_move_to(cr, -8.0, 6.0);
+	cairo_line_to(cr, 0.0, 0.0);
+	cairo_line_to(cr, -8.0, -6.0);
+	cairo_restore(cr);
+	cairo_stroke(cr);
+}
+
+override (Gtk:Widget) gboolean button_press_event(
+	Gtk:Widget *self (check null type), Gdk:Event:Button *event (check null)
+) {
+	if(event->type == GDK_BUTTON_PRESS && event->button == 1) {
+		SELF(self)->active = !SELF(self)->active;
+		if(SELF(self)->active) {
+			gdk_pointer_grab(
+				self->window, FALSE,
+				GDK_POINTER_MOTION_MASK | GDK_BUTTON_PRESS_MASK,
+				self->window, SELF(self)->null_cursor,
+				event->time
+			);
+			g_timeout_add(30, (GSourceFunc)self_update, SELF(self));
+		} else {
+			gdk_pointer_ungrab(event->time);
+		}
+		gtk_widget_queue_draw(self);
+	}
+	return FALSE;
+}
+
+private gboolean update(self) {
+	gint x, y;
+	gint width = GTK_WIDGET(self)->allocation.width;
+	gint height = GTK_WIDGET(self)->allocation.height;
+	double d_log_scale;
+	if(!self->active) return FALSE;
+	gtk_widget_get_pointer(GTK_WIDGET(self), &x, &y);
+	x -= width/2;
+	y -= height/2;
+	d_log_scale = (double)x/(width/2) * SPEED_X;
+	self->log_scale += d_log_scale;
+	self->y = height/2 + exp(d_log_scale)*(self->y - height/2)
+		- (double)y*SPEED_Y;
+	gtk_widget_queue_draw(GTK_WIDGET(self));
+	return TRUE;
+}
+
+override (Gtk:Widget) gboolean motion_notify_event(
+	Gtk:Widget *self (check null type), Gdk:Event:Motion *event
+) {
+	gtk_widget_queue_draw(self);
+	return TRUE;
+}
+
+}

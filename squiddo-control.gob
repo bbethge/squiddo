@@ -78,6 +78,7 @@ override (Gtk:Widget) gboolean expose_event(
 	);
 	/* Draw the rubber arrow */
 	gtk_widget_get_pointer(self, &x, &y);
+	cairo_set_line_width(cr, 3.0);
 	cairo_set_source_rgba(
 		cr, 0.0, 0.5, 0.0, SELF(self)->active ? 1.0 : 0.15
 	);

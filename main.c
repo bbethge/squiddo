@@ -1,5 +1,5 @@
 #include <gtk/gtk.h>
-#include "SquiddoWindow.h"
+#include "squiddo-window.h"
 
 int main(int argc, char *argv[]) {
 	GtkWidget *win;

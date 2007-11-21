@@ -35,3 +35,4 @@ clean:
 	$(RM) $(GENERATED_C_SOURCES)
 	$(RM) $(GENERATED_HEADERS)
 	$(RM) $(OBJECTS)
+	$(RM) squiddo

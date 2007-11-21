@@ -3,10 +3,10 @@
 %}
 
 %{
+#include <glib.h>
 #include <glib/gstdio.h>
 
 #define BOX_ASPECT 2.0
-#define LINE_WIDTH_RATIO 0.1 /* ratio of line width to box height */
 %}
 
 class Squiddo:Box from G:Object {
@@ -58,30 +58,23 @@ public void draw(
 	self, cairo_t *cr (check null), double y1, double y2,
 	double win_width, double win_height
 ) {
-	/*
-	 * height == n_items*item_height
-	 *         + (n_items-1)*LINE_WIDTH_RATIO*item_height
-	 */
 	guint n_items = self->n_items;
 	double width = (y2 - y1)*BOX_ASPECT;
-	double item_height = (y2 - y1)/(n_items + (n_items-1)*LINE_WIDTH_RATIO);
+	double item_height = (y2 - y1)/n_items;
 	double item_width = item_height*BOX_ASPECT;
-	double line_width = LINE_WIDTH_RATIO*item_height;
-	double item_spacing = item_height + line_width;
 	guint i;
+	cairo_set_line_width(cr, 1.0);
 	// cairo_set_font_size(cr, 0.3*(y2 - y1));
 	// cairo_move_to(cr, win_width - width, 0.3*y1 + 0.7*y2);
 	// cairo_show_text(cr, "root");
 	self_ensure_items_loaded(self);
 	for(i = 1; i < n_items; i++) {
-		double y = y1 - 0.5*line_width + i*item_spacing;
-		if(y > win_height || y + line_width < 0.0) continue;
-		cairo_rectangle(
-			cr, win_width - item_width,
-			y, item_width, line_width
-		);
+		double y = y1 + i*item_height;
+		if(y > win_height || y < 0.0) continue;
+		cairo_move_to(cr, win_width, y);
+		cairo_rel_line_to(cr, -MIN(item_width, win_width), 0.0);
 	}
-	cairo_fill(cr);
+	cairo_stroke(cr);
 }
 
 }

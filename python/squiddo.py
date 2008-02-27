@@ -3,6 +3,7 @@ import os
 import gobject
 import gtk
 from gtk import gdk
+import cairo
 
 class Window(gtk.Window):
 	'''
@@ -54,7 +55,7 @@ class Control(gtk.Widget):
 	'''
 		The widget that contains the zooming area
 	'''
-	__mode_button = 1
+	__mode_button = 1  # Which mouse button to use to change mode
 	__speed_x = 0.04
 	__speed_y = 20
 	__crosshair_size = 7
@@ -97,9 +98,9 @@ class Control(gtk.Widget):
 		# Fill the background
 		cc.new_path()
 		cc.rectangle(0, 0, w, h)
-		cc.set_source_color(self.style.bg[self.state])
+		cc.set_source_rgb(1.0, 1.0, 1.0)
 		cc.fill()
-		cc.set_source_color(self.style.fg[self.state])
+		cc.set_source_rgb(0.0, 0.0, 0.0)
 		self.__box.draw(
 			cc, self.__y, h*math.exp(self.__log_scale), w, h)
 		# Draw a crosshair
@@ -156,6 +157,7 @@ gobject.type_register(Control)
 
 class Box:
 	__aspect = 2.0
+	__colors = ( (0.7, 0.7, 0.7), (0.8, 0.8, 0.9) )
 	def __init__(self, path):
 		self.__path = path
 		self.__name = os.path.basename(path)
@@ -181,48 +183,47 @@ class Box:
 			for name in names]
 	def draw(self, cc, y, height, win_width, win_height):
 		cc.save()
-		self.__draw(cc, y, height, win_width, win_height)
+		self.__draw(cc, y, height, Box.__colors[0], win_width, win_height)
 		cc.restore()
-	def __draw(self, cc, y, height, win_width, win_height):
+	def __draw(self, cc, y, height, color, win_width, win_height):
 		if height < 2:
 			return  # No point drawing anything
-		if height < 8:
-			# Gradually increase the line width from 0 to get a fade-in
-			# effect
-			cc.set_line_width((height - 2)/6.0)
-		else:
-			cc.set_line_width(2.0)
 		rad = height/4.0  # Radius of the rounded corners
 		width = height*Box.__aspect
-		# Draw outline
+		# Draw background
+		gradient = cairo.LinearGradient(0., 0., 1., 0.)
+		alpha = 1.0
+		if height < 8:
+			# Gradually increase the opacity to get a fade-in effect
+			alpha = (height - 2.)/6.
+		gradient.add_color_stop_rgba(0., color[0], color[1], color[2], alpha)
+		gradient.add_color_stop_rgba(1., 1., 1., 1., alpha)
+		pat_mat = cairo.Matrix()
+		pat_mat.scale(1./width, 1)
+		pat_mat.translate(-(win_width - width), 0)
+		gradient.set_matrix(pat_mat)
+		cc.set_source(gradient)
 		cc.new_path()
-		if y >= 0:
-			cc.move_to(win_width, y)
-			if width - rad > win_width:
-				cc.line_to(0, y)
-		if width - rad <= win_width:
-			if y + rad >= 0:
-				cc.arc_negative(
-					win_width - width + rad, y + rad,
-					rad, 1.5*math.pi, math.pi)
-			else:
-				cc.move_to(win_width - width, 0)
-			if y + height - rad <= win_height:
-				cc.arc_negative(
-					win_width - width + rad,
-					y + height - rad,
-					rad, math.pi, 0.5*math.pi)
-			else:
-				cc.line_to(win_width - width, win_height)
+		if width - rad > win_width:
+			cc.move_to(win_width, max(y, 0) )
+			cc.line_to(0, max(y, 0) )
+			cc.line_to(0, min(y + height, win_height) )
+			cc.line_to(win_width, min(y + height, win_height) )
 		else:
-			cc.move_to(0, y + height)
-		if y + height <= win_height:
+			cc.move_to(win_width, y)
+			cc.arc_negative(
+				win_width - width + rad, y + rad, rad, 1.5*math.pi, math.pi)
+			cc.arc_negative(
+				win_width - width + rad, y + height - rad,
+				rad, math.pi, 0.5*math.pi)
 			cc.line_to(win_width, y + height)
-		cc.stroke()
+		cc.close_path()
+		cc.fill()
 		if height <= 10:
 			return  # No point drawing label
 		# Draw label
 		cc.save()
+		cc.set_source_rgb(0., 0., 0.)
 		cc.new_path()
 		cc.rectangle(
 			max(win_width - width, 0), max(y, 0),
@@ -244,15 +245,18 @@ class Box:
 		unit_height = \
 			height/(2.0*len(self.__contents) - self.__n_hidden)
 		item_y = y
+		c_index = 0
 		for item in self.__contents:
 			if item.is_hidden():
 				item_height = unit_height
 			else:
 				item_height = 2.0*unit_height
 			if item_y + item_height > 0 and item_y < win_height:
-				item.draw(
-					cc, item_y, item_height, win_width, win_height)
+				item.__draw(
+					cc, item_y, item_height, Box.__colors[c_index],
+					win_width, win_height)
 			item_y += item_height
+			c_index = (c_index + 1)%2
 	def is_hidden(self):
 		return self.__name[0] == '.'
 

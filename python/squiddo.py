@@ -30,27 +30,32 @@ class Window(gtk.Window):
 gobject.type_register(Window)
 
 __arrow_size = 12.0
-__arrow_angle = math.radians(30)
+__arrow_angle = math.radians(25)
 def draw_arrow(cc, xt, yt, xh, yh):
 	'''
 		Draw an arrow on the Cairo context cc, with tail
 		at (xt, yt) and head at (xh, yh).
 	'''
-	cc.new_path()
-	cc.move_to(xt, yt)
-	cc.line_to(xh, yh)
 	cc.save()
-	cc.translate(xh, yh)
-	cc.rotate(math.atan2(yh - yt, xh - xt))
-	cc.move_to(
-		-__arrow_size*math.cos(__arrow_angle),
-		-__arrow_size*math.sin(__arrow_angle))
-	cc.line_to(0, 0)
+	cc.translate(xt, yt)
+	cc.rotate(math.atan2(yh - yt, xh - xt) )
+	cc.new_path()
+	cc.move_to(0, 0)
+	length = math.sqrt( (xh - xt)**2 + (yh - yt)**2)
+	cc.line_to(length - __arrow_size*math.cos(__arrow_angle), 0)
+	cc.stroke()
+	cc.translate(length, 0)
+	cc.new_path()
+	cc.move_to(0, 0)
 	cc.line_to(
 		-__arrow_size*math.cos(__arrow_angle),
 		__arrow_size*math.sin(__arrow_angle))
+	cc.line_to(
+		-__arrow_size*math.cos(__arrow_angle),
+		-__arrow_size*math.sin(__arrow_angle))
+	cc.close_path()
+	cc.fill()
 	cc.restore()
-	cc.stroke()
 class Control(gtk.Widget):
 	'''
 		The widget that contains the zooming area

@@ -162,7 +162,7 @@ gobject.type_register(Control)
 
 class Box:
 	__aspect = 2.0
-	__color = 0.7, 0.7, 0.7
+	__colors = ( (0.7, 0.7, 0.7), (0.8, 0.8, 0.9) )
 	def __init__(self, path):
 		self.__path = path
 		self.__name = os.path.basename(path)
@@ -188,25 +188,24 @@ class Box:
 			for name in names]
 	def draw(self, cc, y, height, win_width, win_height):
 		cc.save()
-		self.__draw(cc, y, height, win_width, win_height)
+		self.__draw(cc, y, height, Box.__colors[0], win_width, win_height)
 		cc.restore()
-	def __draw(self, cc, y, height, win_width, win_height):
+	def __draw(self, cc, y, height, color, win_width, win_height):
 		if height < 2:
 			return  # No point drawing anything
 		rad = height/4.0  # Radius of the rounded corners
 		width = height*Box.__aspect
 		# Draw background
-		gradient = cairo.RadialGradient(1., 1., 0., 1., 1., math.sqrt(2.) )
+		gradient = cairo.LinearGradient(0., 0., 1., 0.)
 		alpha = 1.0
 		if height < 8:
 			# Gradually increase the opacity to get a fade-in effect
 			alpha = (height - 2.)/6.
-		gradient.add_color_stop_rgba(0., 1., 1., 1., alpha)
-		gradient.add_color_stop_rgba(
-			1., Box.__color[0], Box.__color[1], Box.__color[2], alpha)
+		gradient.add_color_stop_rgba(0., color[0], color[1], color[2], alpha)
+		gradient.add_color_stop_rgba(1., 1., 1., 1., alpha)
 		pat_mat = cairo.Matrix()
-		pat_mat.scale(1./width, 1./height)
-		pat_mat.translate(-(win_width - width), -y)
+		pat_mat.scale(1./width, 1)
+		pat_mat.translate(-(win_width - width), 0)
 		gradient.set_matrix(pat_mat)
 		cc.set_source(gradient)
 		cc.new_path()
@@ -251,6 +250,7 @@ class Box:
 		unit_height = \
 			height/(2.0*len(self.__contents) - self.__n_hidden)
 		item_y = y
+		c_index = 0
 		for item in self.__contents:
 			if item.is_hidden():
 				item_height = unit_height
@@ -258,8 +258,10 @@ class Box:
 				item_height = 2.0*unit_height
 			if item_y + item_height > 0 and item_y < win_height:
 				item.__draw(
-					cc, item_y, item_height, win_width, win_height)
+					cc, item_y, item_height, Box.__colors[c_index],
+					win_width, win_height)
 			item_y += item_height
+			c_index = (c_index + 1)%2
 	def is_hidden(self):
 		return self.__name[0] == '.'
 

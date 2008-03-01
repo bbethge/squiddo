@@ -1,174 +1,68 @@
 import math
 import os
-import gobject
-import gtk
-from gtk import gdk
-import cairo
+import pygame
+from OpenGL.GL import *
 
-class Window(gtk.Window):
-	'''
-		The main window for our application
-	'''
-	def __init__(self):
-		gtk.Window.__init__(self, gtk.WINDOW_TOPLEVEL)
-		self.set_default_size(400, 300)
-		self.set_title('Squiddo System Browser')
-		vbox = gtk.VBox()
-		self.add(vbox)
-		toolbar = gtk.Toolbar()
-		vbox.pack_start(toolbar, False, False, 0)
-		quit_button = gtk.ToolButton(stock_id = gtk.STOCK_QUIT)
-		quit_button.connect_object('clicked', Window.hide, self)
-		toolbar.insert(quit_button, -1)
-		frame = gtk.Frame()
-		frame.set_shadow_type(gtk.SHADOW_IN)
-		control = Control()
-		frame.add(control)
-		control.show()
-		vbox.pack_start(frame, True, True, 0)
-		vbox.show_all()
-gobject.type_register(Window)
+# Initialize pygame first so GL calls work
+pygame.display.init()
+pygame.display.set_mode( (640, 480), pygame.OPENGL | pygame.DOUBLEBUF)
 
-__arrow_size = 12.0
-__arrow_angle = math.radians(25)
-def draw_arrow(cc, xt, yt, xh, yh):
-	'''
-		Draw an arrow on the Cairo context cc, with tail
-		at (xt, yt) and head at (xh, yh).
-	'''
-	cc.save()
-	cc.translate(xt, yt)
-	cc.rotate(math.atan2(yh - yt, xh - xt) )
-	cc.new_path()
-	cc.move_to(0, 0)
-	length = math.sqrt( (xh - xt)**2 + (yh - yt)**2)
-	cc.line_to(length - __arrow_size*math.cos(__arrow_angle), 0)
-	cc.stroke()
-	cc.translate(length, 0)
-	cc.new_path()
-	cc.move_to(0, 0)
-	cc.line_to(
-		-__arrow_size*math.cos(__arrow_angle),
-		__arrow_size*math.sin(__arrow_angle))
-	cc.line_to(
-		-__arrow_size*math.cos(__arrow_angle),
-		-__arrow_size*math.sin(__arrow_angle))
-	cc.close_path()
-	cc.fill()
-	cc.restore()
-class Control(gtk.Widget):
-	'''
-		The widget that contains the zooming area
-	'''
-	__mode_button = 1  # Which mouse button to use to change mode
-	__speed_x = 0.04
-	__speed_y = 20
-	__crosshair_size = 7
-	__invisible_cursor = None
-	def __init__(self):
-		gtk.Widget.__init__(self)
-		self.__moving = False
-		# Create an invisible cursor for the class if this is the first
-		# instance to be created.
-		if Control.__invisible_cursor == None:
-			blank_pixmap = gdk.Pixmap(None, 1, 1, 1)
-			color = gdk.Color()
-			Control.__invisible_cursor = gdk.Cursor(
-				blank_pixmap, blank_pixmap, color, color, 0, 0)
-		self.__box = Box('/')  # TODO: Make cross-platform
-		self.__y = 0.0
-		self.__log_scale = 0.0
-		# Give me a window, dammit
-		self.unset_flags(gtk.NO_WINDOW)
-	def do_realize(self):
-		self.set_flags(gtk.REALIZED)
-		self.window = gdk.Window(
-			parent = self.get_parent_window(),
-			width = self.allocation.width,
-			height = self.allocation.height,
-			window_type = gdk.WINDOW_CHILD,
-			event_mask = self.get_events() |
-				gdk.EXPOSURE_MASK |
-				gdk.POINTER_MOTION_MASK |
-				gdk.BUTTON_PRESS_MASK,
-			wclass = gdk.INPUT_OUTPUT,
-			x = self.allocation.x,
-			y = self.allocation.y)
-		self.window.set_user_data(self)
-		self.set_style(self.style.attach(self.window))
-	def do_expose_event(self, event):
-		w = self.allocation.width
-		h = self.allocation.height
-		cc = self.window.cairo_create()
-		# Fill the background
-		cc.new_path()
-		cc.rectangle(0, 0, w, h)
-		cc.set_source_rgb(1.0, 1.0, 1.0)
-		cc.fill()
-		cc.set_source_rgb(0.0, 0.0, 0.0)
-		self.__box.draw(
-			cc, self.__y, h*math.exp(self.__log_scale), w, h)
-		# Draw a crosshair
-		cc.new_path()
-		cc.move_to(w/2 + 0.5 - Control.__crosshair_size, h/2 + 0.5)
-		cc.line_to(w/2 + 0.5 + Control.__crosshair_size, h/2 + 0.5)
-		cc.move_to(w/2 + 0.5, h/2 + 0.5 - Control.__crosshair_size)
-		cc.line_to(w/2 + 0.5, h/2 + 0.5 + Control.__crosshair_size)
-		cc.save()
-		cc.set_line_width(1)
-		cc.stroke()
-		cc.restore()
-		if self.__moving:
-			# Draw an arrow
-			x, y = self.get_pointer()
-			draw_arrow(cc, w/2.0, h/2.0, x, y)
-		return True
-	def do_motion_notify_event(self, event):
-		self.queue_draw()
-		return True
-	def do_button_press_event(self, event):
-		if event.type != gdk.BUTTON_PRESS or \
-			event.button != Control.__mode_button:
-			return False
-		self.__moving = not self.__moving
-		if self.__moving:
-			gdk.pointer_grab(
-				window = self.window,
-				owner_events = True,
-				event_mask = 0,
-				confine_to = self.window,
-				cursor = Control.__invisible_cursor,
-				time = event.time)
-			gobject.timeout_add(30, self.__update)
-		else:
-			gdk.pointer_ungrab(event.time)
-		self.queue_draw()
-		return True
-	def __update(self):
-		if not self.__moving:
-			return False
-		w = self.allocation.width
-		h = self.allocation.height
-		x, y = self.get_pointer()
-		x = 2.0*x/w - 1
-		y = 2.0*y/h - 1
-		d_log_scale = x*Control.__speed_x
-		self.__log_scale += d_log_scale
-		self.__y = h/2.0 + math.exp(d_log_scale)*(self.__y - h/2.0) \
-			- y*Control.__speed_y
-		self.queue_draw()
-		return True
-gobject.type_register(Control)
+class Vector(tuple):
+	def __repr__(self):
+		return 'Vector(' + repr(self) + ')'
+	def __add__(self, other):
+		result = ()
+		for x, y in zip(self, other):
+			result += x + y,
+		return Vector(result)
+	def __sub__(self, other):
+		result = ()
+		for x, y in zip(self, other):
+			result += x - y,
+		return Vector(result)
+	def __mul__(self, scale):
+		result = ()
+		for x in self:
+			result += scale*x,
+		return Vector(result)
+
+background_color = Vector((1., 1., 1.))
 
 class Box:
-	__aspect = 2.0
-	__colors = ( (0.7, 0.7, 0.7), (0.8, 0.8, 0.9) )
+	__aspect = 2.0  # Width/height ratio for all boxes
+	__colors = ( Vector((0.7, 0.7, 0.7)), Vector((0.8, 0.8, 0.9)) )
+	__corner_size = 0.25  # Size of the rounded corners relative to the height
+	__display_list_base = glGenLists(len(__colors) )
+	for i in range(len(__colors) ):
+		glNewList(__display_list_base + i, GL_COMPILE)
+		glBegin(GL_QUAD_STRIP)
+		glColor3dv(__colors[i]*0.5 + background_color*0.5)
+		glVertex2d(__aspect, 0.)
+		glVertex2d(__aspect, 1.)
+		t = __corner_size/__aspect
+		glColor3dv(__colors[i]*(1. - 0.5*t) + background_color*(0.5*t) )
+		glVertex2d(__corner_size, 0.)
+		glVertex2d(__corner_size, 1.)
+		glColor3dv(__colors[i])
+		glVertex2d(0., __corner_size)
+		glVertex2d(0., 1. - __corner_size)
+		glEnd()
+		glEndList()
 	def __init__(self, path):
+		'''\
+			Create a box representing the given filesystem path
+		'''
 		self.__path = path
-		self.__name = os.path.basename(path)
-		self.__contents = None
-		self.__n_hidden = 0
+		self.__name = os.path.basename(path)  # Name to be displayed
+		self.__contents = None  # List of items (boxes) this box contains
+			# (value None indicates we haven't checked for contents yet)
+		self.__n_hidden = 0  # Number of hidden items this box contains
 	def __ensure_contents_loaded(self):
+		'''
+			Load contents if they haven't been loaded yet.  On exit,
+			self.__contents is guaranteed to be a (possibly empty) list of
+			boxes, and self.__n_hidden will be the number of hidden items.
+		'''
 		if self.__contents != None:
 			return
 		if not os.path.isdir(self.__path):
@@ -184,59 +78,36 @@ class Box:
 		names.sort()
 		self.__n_hidden = len(filter((lambda n: n[0] == '.'), names))
 		self.__contents = [
-			Box(os.path.join(self.__path, name))
-			for name in names]
-	def draw(self, cc, y, height, win_width, win_height):
-		cc.save()
-		self.__draw(cc, y, height, Box.__colors[0], win_width, win_height)
-		cc.restore()
-	def __draw(self, cc, y, height, color, win_width, win_height):
+			Box(os.path.join(self.__path, name) ) for name in names]
+	def draw(self, y, height, win_width, win_height):
+		self.__draw(y, height, 0, win_width, win_height)
+	def __draw(self, y, height, c_index, win_width, win_height):
 		if height < 2:
 			return  # No point drawing anything
-		rad = height/4.0  # Radius of the rounded corners
 		width = height*Box.__aspect
 		# Draw background
-		gradient = cairo.LinearGradient(0., 0., 1., 0.)
 		alpha = 1.0
 		if height < 8:
 			# Gradually increase the opacity to get a fade-in effect
 			alpha = (height - 2.)/6.
-		gradient.add_color_stop_rgba(0., color[0], color[1], color[2], alpha)
-		gradient.add_color_stop_rgba(1., 1., 1., 1., alpha)
-		pat_mat = cairo.Matrix()
-		pat_mat.scale(1./width, 1)
-		pat_mat.translate(-(win_width - width), 0)
-		gradient.set_matrix(pat_mat)
-		cc.set_source(gradient)
-		cc.new_path()
-		if width - rad > win_width:
-			cc.move_to(win_width, max(y, 0) )
-			cc.line_to(0, max(y, 0) )
-			cc.line_to(0, min(y + height, win_height) )
-			cc.line_to(win_width, min(y + height, win_height) )
-		else:
-			cc.move_to(win_width, y)
-			cc.arc_negative(
-				win_width - width + rad, y + rad, rad, 1.5*math.pi, math.pi)
-			cc.arc_negative(
-				win_width - width + rad, y + height - rad,
-				rad, math.pi, 0.5*math.pi)
-			cc.line_to(win_width, y + height)
-		cc.close_path()
-		cc.fill()
+		glPushMatrix()
+		glTranslated(win_width - width, y, 0.)
+		glScaled(height, height, 1.)
+		glCallList(Box.__display_list_base + c_index)
+		glPopMatrix()
 		if height <= 10:
 			return  # No point drawing label
 		# Draw label
-		cc.save()
-		cc.set_source_rgb(0., 0., 0.)
-		cc.new_path()
-		cc.rectangle(
-			max(win_width - width, 0), max(y, 0),
-			min(width, win_width), min(height, win_height))
-		cc.clip()
-		cc.move_to(win_width - width, y + 0.75*height)
-		cc.show_text(self.__name)
-		cc.restore()
+		#cc.save()
+		#cc.set_source_rgb(0., 0., 0.)
+		#cc.new_path()
+		#cc.rectangle(
+			#max(win_width - width, 0), max(y, 0),
+			#min(width, win_width), min(height, win_height))
+		#cc.clip()
+		#cc.move_to(win_width - width, y + 0.75*height)
+		#cc.show_text(self.__name)
+		#cc.restore()
 		if height <= 20:
 			return  # Don't draw contents
 		# Draw contents
@@ -245,29 +116,136 @@ class Box:
 			return
 		elif len(self.__contents) == 1:
 			self.__contents[0].draw(
-				cc, y + height/4.0, height/2.0, win_width, win_height)
+				y + height/4.0, height/2.0, win_width, win_height)
 			return
-		unit_height = \
-			height/(2.0*len(self.__contents) - self.__n_hidden)
-		item_y = y
-		c_index = 0
-		for item in self.__contents:
+		unit_height = height/(2.*len(self.__contents) - self.__n_hidden)
+		item_y = y + height
+		for n, item in enumerate(self.__contents):
 			if item.is_hidden():
 				item_height = unit_height
 			else:
 				item_height = 2.0*unit_height
+			item_y -= item_height
 			if item_y + item_height > 0 and item_y < win_height:
-				item.__draw(
-					cc, item_y, item_height, Box.__colors[c_index],
-					win_width, win_height)
-			item_y += item_height
-			c_index = (c_index + 1)%2
+				item.__draw(item_y, item_height, n%2, win_width, win_height)
 	def is_hidden(self):
 		return self.__name[0] == '.'
 
-if __name__ == '__main__':
-	gtk.init_check() # Is this even necessary?
-	win = Window()
-	win.connect('hide', gtk.main_quit)
-	win.show()
-	gtk.main()
+class App:
+	__width, __height = 640, 480
+	__crosshair_color = 0., 0., 0.
+	__arrow_color = 0., 0., 0.
+	__arrow_size = 12.0  # Size of arrow head in pixels
+	__arrow_angle = math.radians(25)  # Half the angle of the point of the arrow
+	__mode_button = 1  # Which mouse button to use to change mode
+	__speed_x = 0.04
+	__speed_y = 20
+	__crosshair_size = 7  # Radius of crosshair in pixels
+
+	__crosshair_display_list = glGenLists(1)
+	glNewList(__crosshair_display_list, GL_COMPILE)
+	glDisable(GL_LINE_SMOOTH)
+	glLineWidth(1.)
+	glColor3dv(__crosshair_color)
+	glBegin(GL_LINES)
+	glVertex2d(__width/2., __height/2. - __crosshair_size)
+	glVertex2d(__width/2., __height/2. + __crosshair_size)
+	glVertex2d(__width/2. - __crosshair_size, __height/2.)
+	glVertex2d(__width/2. + __crosshair_size, __height/2.)
+	glEnd()
+	glEndList()
+	def __init__(self):
+		self.moving = False
+		self.box = Box('/')  # TODO: Make cross-platform
+		self.y = 0.0
+		self.log_scale = 0.0
+		self.clock = pygame.time.Clock()
+		self.done = False
+		glClearColor(
+			background_color[0], background_color[1], background_color[2], 1.)
+		glEnable(GL_BLEND)
+		glEnable(GL_TEXTURE_2D)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0)
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+		glMatrixMode(GL_PROJECTION)
+		glOrtho(0., App.__width, 0., App.__height, -1., 1.)
+		glMatrixMode(GL_MODELVIEW)
+	def draw(self):
+		glClear(GL_COLOR_BUFFER_BIT)
+		glDisable(GL_POLYGON_SMOOTH)
+		self.box.draw(self.y, App.__height*math.exp(self.log_scale),
+			App.__width, App.__height)
+		glColor3d(0., 0., 0.)
+		glCallList(App.__crosshair_display_list)
+		if self.moving:
+			mouse_x, mouse_y = pygame.mouse.get_pos()
+			glColor3dv(App.__arrow_color)
+			glEnable(GL_LINE_SMOOTH)
+			glEnable(GL_POLYGON_SMOOTH)
+			glLineWidth(2.)
+			self.draw_arrow(
+				App.__width/2., App.__height/2.,
+				mouse_x, App.__height - mouse_y)
+		pygame.display.flip()
+	def handle_event(self, ev):
+		if ev.type == pygame.QUIT or (ev.type == pygame.KEYDOWN
+			and ev.key == pygame.K_ESCAPE):
+			return False
+		if ev.type == pygame.MOUSEBUTTONDOWN:
+			if ev.button == App.__mode_button:
+				self.moving = not self.moving
+				pygame.mouse.set_visible(not self.moving)
+				pygame.event.set_grab(self.moving)
+		elif ev.type == pygame.VIDEOEXPOSE:
+			self.draw()
+		return True
+	def update(self):
+		if not self.moving:
+			return self.handle_event(pygame.event.wait() )
+		# Handle all events in the queue
+		while True:
+			ev = pygame.event.poll()
+			if ev.type == pygame.NOEVENT:
+				break
+			cont = self.handle_event(ev)
+			if not cont:
+				return False
+		x, y = pygame.mouse.get_pos()
+		x = 2.*x/App.__width - 1.
+		y = -(2.*y/App.__height - 1.)
+		d_log_scale = x*App.__speed_x
+		self.log_scale += d_log_scale
+		self.y = (
+			App.__height/2. + math.exp(d_log_scale)*(self.y - App.__height/2.)
+			- y*App.__speed_y)
+		self.draw()
+		self.clock.tick(30)
+		return True
+	def draw_arrow(self, xt, yt, xh, yh):
+		'''
+			Draw an arrow with tail at (xt, yt) and head at (xh, yh).
+		'''
+		glPushMatrix()
+		glTranslated(xt, yt, 0.)
+		glRotated(math.degrees(math.atan2(yh - yt, xh - xt) ), 0., 0., 1.)
+		glBegin(GL_LINES)
+		glVertex2d(0., 0.)
+		length = math.sqrt( (xh - xt)**2 + (yh - yt)**2)
+		glVertex2d(length - App.__arrow_size*math.cos(App.__arrow_angle), 0.)
+		glEnd()
+		glTranslated(length, 0., 0.)
+		glBegin(GL_TRIANGLES)
+		glVertex2d(0., 0.)
+		glVertex2d(
+			-App.__arrow_size*math.cos(App.__arrow_angle),
+			App.__arrow_size*math.sin(App.__arrow_angle) )
+		glVertex2d(
+			-App.__arrow_size*math.cos(App.__arrow_angle),
+			-App.__arrow_size*math.sin(App.__arrow_angle) )
+		glEnd()
+		glPopMatrix()
+
+app = App()
+while app.update():
+	pass

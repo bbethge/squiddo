@@ -26,28 +26,15 @@ class Vector(tuple):
 			result += scale*x,
 		return Vector(result)
 
-background_color = Vector((1., 1., 1.))
+background_color = 1., 1., 1.
 
 class Box:
 	__aspect = 2.0  # Width/height ratio for all boxes
-	__colors = ( Vector((0.7, 0.7, 0.7)), Vector((0.8, 0.8, 0.9)) )
+	__color = 0.7, 0.7, 0.7
 	__corner_size = 0.25  # Size of the rounded corners relative to the height
-	__display_list_base = glGenLists(len(__colors) )
-	for i in range(len(__colors) ):
-		glNewList(__display_list_base + i, GL_COMPILE)
-		glBegin(GL_QUAD_STRIP)
-		glColor3dv(__colors[i]*0.5 + background_color*0.5)
-		glVertex2d(__aspect, 0.)
-		glVertex2d(__aspect, 1.)
-		t = __corner_size/__aspect
-		glColor3dv(__colors[i]*(1. - 0.5*t) + background_color*(0.5*t) )
-		glVertex2d(__corner_size, 0.)
-		glVertex2d(__corner_size, 1.)
-		glColor3dv(__colors[i])
-		glVertex2d(0., __corner_size)
-		glVertex2d(0., 1. - __corner_size)
-		glEnd()
-		glEndList()
+	__corner_detail = 8
+	__display_list = None
+
 	def __init__(self, path):
 		'''\
 			Create a box representing the given filesystem path
@@ -57,6 +44,29 @@ class Box:
 		self.__contents = None  # List of items (boxes) this box contains
 			# (value None indicates we haven't checked for contents yet)
 		self.__n_hidden = 0  # Number of hidden items this box contains
+		if Box.__display_list == None:
+			Box.__display_list = glGenLists(1)
+			glNewList(Box.__display_list, GL_COMPILE)
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 2, 2, 0, GL_RGB,
+				GL_UNSIGNED_BYTE,
+				([int(x*255.) for x in Box.__color + background_color]
+					+ [0, 0])*2)
+			glBegin(GL_QUAD_STRIP)
+			def vertex(x, y):
+				glTexCoord2d(0.25 + 0.25*x/Box.__aspect + 0.25*(1. - y), 0.5)
+				glVertex2d(x, y)
+			vertex(Box.__aspect, 0.)
+			vertex(Box.__aspect, 1.)
+			for n in range(Box.__corner_detail + 1):
+				agl = (math.pi/2.)*n/Box.__corner_detail
+				vertex(
+					Box.__corner_size*(1. - math.sin(agl) ),
+					Box.__corner_size*(1. - math.cos(agl) ) )
+				vertex(
+					Box.__corner_size*(1. - math.sin(agl) ),
+					1. - Box.__corner_size*(1. - math.cos(agl) ) )
+			glEnd()
+			glEndList()
 	def __ensure_contents_loaded(self):
 		'''
 			Load contents if they haven't been loaded yet.  On exit,
@@ -80,8 +90,9 @@ class Box:
 		self.__contents = [
 			Box(os.path.join(self.__path, name) ) for name in names]
 	def draw(self, y, height, win_width, win_height):
-		self.__draw(y, height, 0, win_width, win_height)
-	def __draw(self, y, height, c_index, win_width, win_height):
+		glEnable(GL_TEXTURE_2D)
+		self.__draw(y, height, win_width, win_height)
+	def __draw(self, y, height, win_width, win_height):
 		if height < 2:
 			return  # No point drawing anything
 		width = height*Box.__aspect
@@ -93,7 +104,8 @@ class Box:
 		glPushMatrix()
 		glTranslated(win_width - width, y, 0.)
 		glScaled(height, height, 1.)
-		glCallList(Box.__display_list_base + c_index)
+		glColor4d(1., 1., 1., alpha)
+		glCallList(Box.__display_list)
 		glPopMatrix()
 		if height <= 10:
 			return  # No point drawing label
@@ -120,14 +132,14 @@ class Box:
 			return
 		unit_height = height/(2.*len(self.__contents) - self.__n_hidden)
 		item_y = y + height
-		for n, item in enumerate(self.__contents):
+		for item in self.__contents:
 			if item.is_hidden():
 				item_height = unit_height
 			else:
 				item_height = 2.0*unit_height
 			item_y -= item_height
 			if item_y + item_height > 0 and item_y < win_height:
-				item.__draw(item_y, item_height, n%2, win_width, win_height)
+				item.__draw(item_y, item_height, win_width, win_height)
 	def is_hidden(self):
 		return self.__name[0] == '.'
 
@@ -164,7 +176,7 @@ class App:
 		glClearColor(
 			background_color[0], background_color[1], background_color[2], 1.)
 		glEnable(GL_BLEND)
-		glEnable(GL_TEXTURE_2D)
+		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0)
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
@@ -177,6 +189,7 @@ class App:
 		self.box.draw(self.y, App.__height*math.exp(self.log_scale),
 			App.__width, App.__height)
 		glColor3d(0., 0., 0.)
+		glDisable(GL_TEXTURE_2D)
 		glCallList(App.__crosshair_display_list)
 		if self.moving:
 			mouse_x, mouse_y = pygame.mouse.get_pos()

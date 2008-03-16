@@ -6,6 +6,7 @@ from OpenGL.GL import *
 # Initialize pygame first so GL calls work
 pygame.display.init()
 pygame.display.set_mode( (640, 480), pygame.OPENGL | pygame.DOUBLEBUF)
+pygame.font.init()
 
 class Vector(tuple):
 	def __repr__(self):
@@ -34,6 +35,7 @@ class Box:
 	__corner_size = 0.25  # Size of the rounded corners relative to the height
 	__corner_detail = 8
 	__display_list = None
+	__font = pygame.font.Font(pygame.font.get_default_font(), 14)
 
 	def __init__(self, path):
 		'''\
@@ -41,6 +43,7 @@ class Box:
 		'''
 		self.__path = path
 		self.__name = os.path.basename(path)  # Name to be displayed
+		self.__name_display_list = None
 		self.__contents = None  # List of items (boxes) this box contains
 			# (value None indicates we haven't checked for contents yet)
 		self.__n_hidden = 0  # Number of hidden items this box contains
@@ -67,6 +70,19 @@ class Box:
 					1. - Box.__corner_size*(1. - math.cos(agl) ) )
 			glEnd()
 			glEndList()
+	def __ensure_name_rendered(self):
+		if self.__name_display_list != None:
+			return
+		surf = Box.__font.render(self.__name, True, (0., 0., 0., 1.) )
+		print dir(surf)
+		surf = surf.convert(32, (0xFF00, 0xFF0000, 0xFF000000, 0xFF) )
+		self.__name_display_list = glGenLists(1)
+		glNewList(self.__name_display_list, GL_COMPILE)
+		glRasterPos2d(0., 0.)
+		glDrawPixels(
+			surf.get_width(), surf.get_height(), GL_ARGB,
+			GL_UNSIGNED_INT_8_8_8_8)
+		glEndList();
 	def __ensure_contents_loaded(self):
 		'''
 			Load contents if they haven't been loaded yet.  On exit,
@@ -110,16 +126,11 @@ class Box:
 		if height <= 10:
 			return  # No point drawing label
 		# Draw label
-		#cc.save()
-		#cc.set_source_rgb(0., 0., 0.)
-		#cc.new_path()
-		#cc.rectangle(
-			#max(win_width - width, 0), max(y, 0),
-			#min(width, win_width), min(height, win_height))
-		#cc.clip()
-		#cc.move_to(win_width - width, y + 0.75*height)
-		#cc.show_text(self.__name)
-		#cc.restore()
+		self.__ensure_name_rendered()
+		glPushMatrix()
+		glTranslated(win_width - width, y + 0.5*height, 0.)
+		glCallList(self.__name_display_list)
+		glPopMatrix()
 		if height <= 20:
 			return  # Don't draw contents
 		# Draw contents

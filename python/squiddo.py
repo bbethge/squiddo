@@ -227,8 +227,11 @@ class Box:
 		if height <= 10:
 			return  # No point drawing label
 		# Draw label
+		alpha = 1.
+		if height < 14:
+			alpha = (height - 10.)/4.
 		cc.save()
-		cc.set_source_rgb(0., 0., 0.)
+		cc.set_source_rgba(0., 0., 0., alpha)
 		cc.new_path()
 		cc.rectangle(
 			max(win_width - width, 0), max(y, 0),

@@ -196,7 +196,7 @@ class Box:
 		rad = height/4.0  # Radius of the rounded corners
 		width = height*Box.__aspect
 		# Draw background
-		gradient = cairo.LinearGradient(0., 0., 1., 0.)
+		gradient = cairo.LinearGradient(0., 0., 1., 1.)
 		alpha = 1.0
 		if height < 8:
 			# Gradually increase the opacity to get a fade-in effect
@@ -204,8 +204,8 @@ class Box:
 		gradient.add_color_stop_rgba(0., color[0], color[1], color[2], alpha)
 		gradient.add_color_stop_rgba(1., 1., 1., 1., alpha)
 		pat_mat = cairo.Matrix()
-		pat_mat.scale(1./width, 1)
-		pat_mat.translate(-(win_width - width), 0)
+		pat_mat.scale(1./width, 1./height)
+		pat_mat.translate(-(win_width - width), -y)
 		gradient.set_matrix(pat_mat)
 		cc.set_source(gradient)
 		cc.new_path()

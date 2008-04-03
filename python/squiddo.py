@@ -1,9 +1,13 @@
 import math
 import os
+import threading
+import Queue
 import gobject
 import gtk
 from gtk import gdk
 import cairo
+
+fs_server = None
 
 class Window(gtk.Window):
 	'''
@@ -160,6 +164,37 @@ class Control(gtk.Widget):
 		return True
 gobject.type_register(Control)
 
+class FilesystemRequest:
+	pass
+class FilesystemResponse:
+	pass
+class FilesystemServer(threading.Thread):
+	def __init__(self):
+		threading.Thread.__init__(self)
+		self.setDaemon(True)
+		self.queue = Queue.Queue(0)
+	def run(self):
+		while True:
+			req = self.queue.get()
+			resp = FilesystemResponse()
+			if not os.path.isdir(req.path):
+				# Treat non-directories like empty directories
+				resp.n_hidden = 0
+				resp.boxes = []
+				req.queue.put(resp)
+				continue
+			try:
+				names = os.listdir(req.path)
+			except OSError:
+				# Treat I/O errors like empty directories
+				resp.n_hidden = 0
+				resp.boxes = []
+				req.queue.put(resp)
+			names.sort()
+			resp.n_hidden = len([ name for name in names if name[0] == '.' ])
+			resp.boxes = [ Box(os.path.join(req.path, name) ) for name in names]
+			req.queue.put(resp)
+
 class Box:
 	__aspect = 2.0
 	__colors = ( (0.7, 0.7, 0.7), (0.8, 0.8, 0.9) )
@@ -167,25 +202,26 @@ class Box:
 		self.__path = path
 		self.__name = os.path.basename(path)
 		self.__contents = None
-		self.__n_hidden = 0
-	def __ensure_contents_loaded(self):
-		if self.__contents != None:
-			return
-		if not os.path.isdir(self.__path):
-			# Treat non-directories like empty directories
-			self.__contents = []
-			return
+		self.__contents_requested = False
+	def __try_to_load_contents(self):
+		'''
+			Do not call if self.__contents != None
+		'''
+		if not self.__contents_requested:
+			self.__queue = Queue.Queue(1)
+			req = FilesystemRequest()
+			req.path = self.__path
+			req.queue = self.__queue
+			fs_server.queue.put(req)
+			self.__contents_requested = True
 		try:
-			names = os.listdir(self.__path)
-		except OSError:
-			# Treat I/O errors like empty directories
-			self.__contents = []
-			return
-		names.sort()
-		self.__n_hidden = len(filter((lambda n: n[0] == '.'), names))
-		self.__contents = [
-			Box(os.path.join(self.__path, name))
-			for name in names]
+			resp = self.__queue.get_nowait()
+		except Queue.Empty:
+			# Still waiting on fs_server
+			return False
+		self.__contents = resp.boxes
+		self.__n_hidden = resp.n_hidden
+		return True
 	def draw(self, cc, y, height, win_width, win_height):
 		cc.save()
 		self.__draw(cc, y, height, Box.__colors[0], win_width, win_height)
@@ -243,7 +279,9 @@ class Box:
 		if height <= 20:
 			return  # Don't draw contents
 		# Draw contents
-		self.__ensure_contents_loaded()
+		if self.__contents == None:
+			if not self.__try_to_load_contents():
+				return
 		if len(self.__contents) == 0:
 			return
 		elif len(self.__contents) == 1:
@@ -270,6 +308,8 @@ class Box:
 
 if __name__ == '__main__':
 	gtk.init_check() # Is this even necessary?
+	fs_server = FilesystemServer()
+	fs_server.start()
 	win = Window()
 	win.connect('hide', gtk.main_quit)
 	win.show()

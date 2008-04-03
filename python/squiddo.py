@@ -165,8 +165,19 @@ class Control(gtk.Widget):
 gobject.type_register(Control)
 
 class FilesystemRequest:
+	'''\
+		Members:
+		path	The path of the directory to list the contents of
+		queue	A Queue.Queue to send the response to
+	'''
 	pass
 class FilesystemResponse:
+	'''\
+		Members:
+		items		A list of newly-created boxes representing the contents of
+					the requested directory
+		n_hidden	The number of hidden items in (items)
+	'''
 	pass
 class FilesystemServer(threading.Thread):
 	def __init__(self):
@@ -180,7 +191,7 @@ class FilesystemServer(threading.Thread):
 			if not os.path.isdir(req.path):
 				# Treat non-directories like empty directories
 				resp.n_hidden = 0
-				resp.boxes = []
+				resp.items = []
 				req.queue.put(resp)
 				continue
 			try:
@@ -188,11 +199,11 @@ class FilesystemServer(threading.Thread):
 			except OSError:
 				# Treat I/O errors like empty directories
 				resp.n_hidden = 0
-				resp.boxes = []
+				resp.items = []
 				req.queue.put(resp)
 			names.sort()
 			resp.n_hidden = len([ name for name in names if name[0] == '.' ])
-			resp.boxes = [ Box(os.path.join(req.path, name) ) for name in names]
+			resp.items = [ Box(os.path.join(req.path, name) ) for name in names]
 			req.queue.put(resp)
 
 class Box:
@@ -204,8 +215,9 @@ class Box:
 		self.__contents = None
 		self.__contents_requested = False
 	def __try_to_load_contents(self):
-		'''
-			Do not call if self.__contents != None
+		'''\
+			Call this periodically until it returns True to load
+			self.__contents.  Do not call if self.__contents != None.
 		'''
 		if not self.__contents_requested:
 			self.__queue = Queue.Queue(1)
@@ -219,7 +231,7 @@ class Box:
 		except Queue.Empty:
 			# Still waiting on fs_server
 			return False
-		self.__contents = resp.boxes
+		self.__contents = resp.items
 		self.__n_hidden = resp.n_hidden
 		return True
 	def draw(self, cc, y, height, win_width, win_height):
@@ -304,6 +316,9 @@ class Box:
 			item_y += item_height
 			c_index = (c_index + 1)%2
 	def is_hidden(self):
+		'''\
+			Does self represent a hidden directory?
+		'''
 		return self.__name[0] == '.'
 
 if __name__ == '__main__':

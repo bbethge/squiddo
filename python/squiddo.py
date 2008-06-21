@@ -7,10 +7,6 @@ default_width = 640   # Default window dimensions
 default_height = 480  #
 background_color = 1., 1., 1.
 
-def draw_string(str):
-	for char in str:
-		glutStrokeCharacter(GLUT_STROKE_ROMAN, ord(char) )
-
 class Box:
 	__aspect = 2.0  # Width/height ratio for all boxes
 	__color = 0.7, 0.7, 0.7
@@ -67,7 +63,7 @@ class Box:
 		#self.__name_display_list = glGenLists(1)
 		#glNewList(self.__name_display_list, GL_COMPILE)
 		#glColor3d(0., 0., 0.)
-		#draw_string(self.__name)
+		#glutStrokeString(GLUT_STROKE_ROMAN, self.__name)
 		#glEndList()
 	def __ensure_contents_loaded(self):
 		'''\
@@ -119,7 +115,7 @@ class Box:
 		glTranslated(win_width - width, y + 0.5*height, 0.)
 		glScaled(0.1, 0.1, 1.)
 		glColor4d(0., 0., 0., alpha)
-		draw_string(self.__name)
+		glutStrokeString(GLUT_STROKE_ROMAN, self.__name)
 		glPopMatrix()
 		if height <= 20:
 			return  # Don't draw contents

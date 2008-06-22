@@ -110,13 +110,12 @@ class Box:
 		if height <= 10:
 			return  # No point drawing label
 		# Draw label
+		if height < 16:
+			alpha = (height - 10.)/6.
 		self.__ensure_name_rendered()
-		glPushMatrix()
-		glTranslated(win_width - width, y + 0.5*height, 0.)
-		glScaled(0.1, 0.1, 1.)
 		glColor4d(0., 0., 0., alpha)
-		glutStrokeString(GLUT_STROKE_ROMAN, self.__name)
-		glPopMatrix()
+		glRasterPos2d(win_width - width, y + 0.5*height)
+		glutBitmapString(GLUT_BITMAP_9_BY_15, self.__name)
 		if height <= 20:
 			return  # Don't draw contents
 		# Draw contents
@@ -232,8 +231,8 @@ class App:
 		glPopMatrix()
 		if self.moving:
 			glColor3dv(App.__arrow_color)
-			glEnable(GL_LINE_SMOOTH)
-			glEnable(GL_POLYGON_SMOOTH)
+			glEnable(GL_LINE_SMOOTH)    # These happen not to work correctly on
+			glEnable(GL_POLYGON_SMOOTH) # my hardware (all coverage values are 1)
 			glLineWidth(2.)
 			self.draw_arrow(
 				self.width/2., self.height/2.,

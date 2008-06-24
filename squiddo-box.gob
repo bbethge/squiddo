@@ -62,7 +62,9 @@ property OBJECT owner
 protected gchar *collation_key = NULL destroywith g_free;
 protected Pango:Layout *label = NULL unrefwith g_object_unref;
 protected gboolean items_loaded = FALSE;
+protected gboolean hidden = FALSE;
 protected guint n_items = 0;
+protected guint n_hidden_items = 0;
 protected Squiddo:Box **items = NULL destroywith g_free;
 
 public Squiddo:Box *new(
@@ -108,12 +110,14 @@ protected void ensure_items_loaded(self) {
 	if(self->items_loaded) return;
 	self->items_loaded = TRUE;
 	g_return_if_fail(self->n_items == 0);
+	g_return_if_fail(self->n_hidden_items == 0);
 	dir = g_dir_open(self->path, 0, NULL);
 	if(dir == NULL) return;
 	for(;;) {
 		const gchar *name = g_dir_read_name(dir);
 		if(name == NULL) break;
 		self->n_items++;
+		if(name[0] == '.') self->n_hidden_items++;
 	}
 	if(self->n_items > 0) {
 		guint i;
@@ -216,8 +220,10 @@ public void draw_items(
 	gint win_width (check > 0), gint win_height (check > 0)
 ) {
 	guint n_items = self->n_items;
-	double item_height = n_items < 2 ? height/2.0 : (double)height/n_items;
-	guint i;
+	guint n_hidden = self->n_hidden_items;
+	double item_height = n_items < 2 ? height/2.0 :
+		2.0*height/(2*n_items-n_hidden);
+	guint i, j;
 	if(n_items == 0) return;
 	else if(n_items == 1) {
 		self_draw(
@@ -226,8 +232,10 @@ public void draw_items(
 		);
 		return;
 	}
+	j = 0;
 	for(i = 0; i < n_items; i++) {
 		gint item_y = y + (gint)(i*item_height);
+		gboolean hidden = items[i]
 		if(
 			item_y >= (gint)win_height ||
 			item_y + (gint)item_height < 0

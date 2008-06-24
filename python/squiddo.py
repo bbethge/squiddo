@@ -60,11 +60,10 @@ class Box:
 	def __ensure_name_rendered(self):
 		if self.__name_display_list != None:
 			return
-		#self.__name_display_list = glGenLists(1)
-		#glNewList(self.__name_display_list, GL_COMPILE)
-		#glColor3d(0., 0., 0.)
-		#glutStrokeString(GLUT_STROKE_ROMAN, self.__name)
-		#glEndList()
+		self.__name_display_list = glGenLists(1)
+		glNewList(self.__name_display_list, GL_COMPILE)
+		glutBitmapString(GLUT_BITMAP_9_BY_15, self.__name)
+		glEndList()
 	def __ensure_contents_loaded(self):
 		'''\
 			Load contents if they haven't been loaded yet.  On exit,
@@ -115,7 +114,7 @@ class Box:
 		self.__ensure_name_rendered()
 		glColor4d(0., 0., 0., alpha)
 		glRasterPos2d(win_width - width, y + 0.5*height)
-		glutBitmapString(GLUT_BITMAP_9_BY_15, self.__name)
+		glCallList(self.__name_display_list)
 		if height <= 20:
 			return  # Don't draw contents
 		# Draw contents
@@ -279,5 +278,6 @@ class App:
 glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE)
 glutInitWindowSize(default_width, default_height)
 glutInit(sys.argv)
+glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_GLUTMAINLOOP_RETURNS)
 app = App()
 glutMainLoop()

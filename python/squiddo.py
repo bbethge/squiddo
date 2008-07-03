@@ -1,11 +1,56 @@
 import math
 import os
+import threading
+import Queue
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 
 default_width = 640   # Default window dimensions
 default_height = 480  #
 background_color = 1., 1., 1.
+fs_server = None
+
+class FilesystemRequest:
+	'''\
+		Members:
+		path	The path of the directory to list the contents of
+		queue	A Queue.Queue to send the response to
+	'''
+	pass
+class FilesystemResponse:
+	'''\
+		Members:
+		items		A list of newly-created boxes representing the contents of
+					the requested directory
+		n_hidden	The number of hidden items in (items)
+	'''
+	pass
+class FilesystemServer(threading.Thread):
+	def __init__(self):
+		threading.Thread.__init__(self)
+		self.setDaemon(True)
+		self.queue = Queue.Queue(0)
+	def run(self):
+		while True:
+			req = self.queue.get()
+			resp = FilesystemResponse()
+			if not os.path.isdir(req.path):
+				# Treat non-directories like empty directories
+				resp.n_hidden = 0
+				resp.items = []
+				req.queue.put(resp)
+				continue
+			try:
+				names = os.listdir(req.path)
+			except OSError:
+				# Treat I/O errors like empty directories
+				resp.n_hidden = 0
+				resp.items = []
+				req.queue.put(resp)
+			names.sort()
+			resp.n_hidden = len([ name for name in names if name[0] == '.' ])
+			resp.items = [ Box(os.path.join(req.path, name) ) for name in names]
+			req.queue.put(resp)
 
 class Box:
 	__aspect = 2.0  # Width/height ratio for all boxes
@@ -26,8 +71,29 @@ class Box:
 			# None indicates it hasn't been created yet
 		self.__contents = None  # List of items (boxes) this box contains
 			# (value None indicates we haven't checked for contents yet)
+		self.__contents_requested = False
 		self.__n_hidden = 0  # Number of hidden items this box contains
 		self.__ensure_display_list_created()
+	def __try_to_load_contents(self):
+		'''\
+			Call this periodically until it returns True to load
+			self.__contents.  Do not call if self.__contents != None.
+		'''
+		if not self.__contents_requested:
+			self.__queue = Queue.Queue(1)
+			req = FilesystemRequest()
+			req.path = self.__path
+			req.queue = self.__queue
+			fs_server.queue.put(req)
+			self.__contents_requested = True
+		try:
+			resp = self.__queue.get_nowait()
+		except Queue.Empty:
+			# Still waiting on fs_server
+			return False
+		self.__contents = resp.items
+		self.__n_hidden = resp.n_hidden
+		return True
 	def __ensure_display_list_created(self):
 		'''\
 			Create Box.__display_list if it hasn't been created yet
@@ -64,29 +130,6 @@ class Box:
 		glNewList(self.__name_display_list, GL_COMPILE)
 		glutBitmapString(GLUT_BITMAP_9_BY_15, self.__name)
 		glEndList()
-	def __ensure_contents_loaded(self):
-		'''\
-			Load contents if they haven't been loaded yet.  On exit,
-			self.__contents is guaranteed to be a (possibly empty) list of
-			boxes, and self.__n_hidden will be the number of hidden items.
-		'''
-		if self.__contents != None:
-			return
-		if not os.path.isdir(self.__path):
-			# Treat non-directories like empty directories
-			self.__contents = []
-			return
-		try:
-			names = os.listdir(self.__path)
-		except OSError:
-			# Treat I/O errors like empty directories
-			self.__contents = []
-			return
-		names.sort()
-		# TODO: Make cross-platform
-		self.__n_hidden = len(filter((lambda n: n[0] == '.'), names))
-		self.__contents = [
-			Box(os.path.join(self.__path, name) ) for name in names]
 	def draw(self, y, height, win_width, win_height):
 		glEnable(GL_TEXTURE_2D)
 		glDisable(GL_POLYGON_SMOOTH)
@@ -118,7 +161,9 @@ class Box:
 		if height <= 20:
 			return  # Don't draw contents
 		# Draw contents
-		self.__ensure_contents_loaded()
+		if self.__contents == None:
+			if not self.__try_to_load_contents():
+				return
 		if len(self.__contents) == 0:
 			return
 		elif len(self.__contents) == 1:
@@ -275,6 +320,8 @@ class App:
 		glCallList(App.__arrowhead_display_list)
 		glPopMatrix()
 
+fs_server = FilesystemServer()
+fs_server.start()
 glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE)
 glutInitWindowSize(default_width, default_height)
 glutInit(sys.argv)

@@ -54,10 +54,10 @@ class FilesystemServer(threading.Thread):
 
 class Box:
 	__aspect = 2.0  # Width/height ratio for all boxes
-	__color = 0.7, 0.7, 0.7
+	__colors = (0.7, 0.7, 0.7), (0.6, 0.7, 0.8)
 	__corner_size = 0.25  # Size of the rounded corners relative to the height
 	__corner_detail = 8  # Number of line segments used on rounded corners
-	__display_list = None
+	__display_lists = None
 		# Display list for drawing the background shape of the box (value None
 		# indicates it hasn't been created yet)
 
@@ -99,30 +99,32 @@ class Box:
 			Create Box.__display_list if it hasn't been created yet
 			Post: Box.__display_list is a valid display list number
 		'''
-		if Box.__display_list != None:
+		if Box.__display_lists != None:
 			return
-		Box.__display_list = glGenLists(1)
-		glNewList(Box.__display_list, GL_COMPILE)
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 2, 2, 0, GL_RGB,
-			GL_UNSIGNED_BYTE,
-			([int(x*255.) for x in Box.__color + background_color]
-				+ [0, 0])*2)
-		glBegin(GL_QUAD_STRIP)
-		def vertex(x, y):
-			glTexCoord2d(0.25 + 0.25*x/Box.__aspect + 0.25*(1. - y), 0.5)
-			glVertex2d(x, y)
-		vertex(Box.__aspect, 0.)
-		vertex(Box.__aspect, 1.)
-		for n in range(Box.__corner_detail + 1):
-			agl = (math.pi/2.)*n/Box.__corner_detail
-			vertex(
-				Box.__corner_size*(1. - math.sin(agl) ),
-				Box.__corner_size*(1. - math.cos(agl) ) )
-			vertex(
-				Box.__corner_size*(1. - math.sin(agl) ),
-				1. - Box.__corner_size*(1. - math.cos(agl) ) )
-		glEnd()
-		glEndList()
+		display_list_base = glGenLists(2)
+		Box.__display_lists = display_list_base, display_list_base + 1
+		for num, list in enumerate(Box.__display_lists):
+			glNewList(list, GL_COMPILE)
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 2, 2, 0, GL_RGB,
+				GL_UNSIGNED_BYTE,
+				([int(x*255.) for x in Box.__colors[num] + background_color]
+					+ [0, 0])*2)
+			glBegin(GL_QUAD_STRIP)
+			def vertex(x, y):
+				glTexCoord2d(0.25 + 0.25*x/Box.__aspect + 0.25*(1. - y), 0.5)
+				glVertex2d(x, y)
+			vertex(Box.__aspect, 0.)
+			vertex(Box.__aspect, 1.)
+			for n in range(Box.__corner_detail + 1):
+				agl = (math.pi/2.)*n/Box.__corner_detail
+				vertex(
+					Box.__corner_size*(1. - math.sin(agl) ),
+					Box.__corner_size*(1. - math.cos(agl) ) )
+				vertex(
+					Box.__corner_size*(1. - math.sin(agl) ),
+					1. - Box.__corner_size*(1. - math.cos(agl) ) )
+			glEnd()
+			glEndList()
 	def __ensure_name_rendered(self):
 		if self.__name_display_list != None:
 			return
@@ -130,11 +132,11 @@ class Box:
 		glNewList(self.__name_display_list, GL_COMPILE)
 		glutBitmapString(GLUT_BITMAP_9_BY_15, self.__name)
 		glEndList()
-	def draw(self, y, height, win_width, win_height):
+	def draw(self, y, height, color, win_width, win_height):
 		glEnable(GL_TEXTURE_2D)
 		glDisable(GL_POLYGON_SMOOTH)
-		self.__draw(y, height, win_width, win_height)
-	def __draw(self, y, height, win_width, win_height):
+		self.__draw(y, height, color, win_width, win_height)
+	def __draw(self, y, height, color, win_width, win_height):
 		if height < 2:
 			return  # No point drawing anything
 		width = height*Box.__aspect
@@ -147,7 +149,7 @@ class Box:
 		glTranslated(win_width - width, y, 0.)
 		glScaled(height, height, 1.)
 		glColor4d(1., 1., 1., alpha)
-		glCallList(Box.__display_list)
+		glCallList(Box.__display_lists[color])
 		glPopMatrix()
 		if height <= 10:
 			return  # No point drawing label
@@ -168,18 +170,20 @@ class Box:
 			return
 		elif len(self.__contents) == 1:
 			self.__contents[0].draw(
-				y + height/4.0, height/2.0, win_width, win_height)
+				y + height/4.0, height/2.0, (color+1)%2, win_width, win_height)
 			return
 		unit_height = height/(2.*len(self.__contents) - self.__n_hidden)
 		item_y = y + height
+		item_color = color
 		for item in self.__contents:
 			if item.is_hidden():
 				item_height = unit_height
 			else:
 				item_height = 2.0*unit_height
 			item_y -= item_height
+			item_color = (item_color+1)%2
 			if item_y + item_height > 0 and item_y < win_height:
-				item.__draw(item_y, item_height, win_width, win_height)
+				item.__draw(item_y, item_height, item_color, win_width, win_height)
 	def is_hidden(self):
 		return self.__name[0] == '.'
 
@@ -266,7 +270,7 @@ class App:
 		self.mouse_y = y
 	def draw(self):
 		glClear(GL_COLOR_BUFFER_BIT)
-		self.box.draw(self.y, math.exp(self.log_scale), self.width, self.height)
+		self.box.draw(self.y, math.exp(self.log_scale), 0, self.width, self.height)
 		glColor3d(0., 0., 0.)
 		glDisable(GL_TEXTURE_2D)
 		glPushMatrix()

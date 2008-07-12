@@ -105,13 +105,13 @@ class Box:
 		Box.__display_lists = display_list_base, display_list_base + 1
 		for num, list in enumerate(Box.__display_lists):
 			glNewList(list, GL_COMPILE)
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 2, 2, 0, GL_RGB,
+			glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB8, 2, 0, GL_RGB,
 				GL_UNSIGNED_BYTE,
-				([int(x*255.) for x in Box.__colors[num] + background_color]
-					+ [0, 0])*2)
+				[int(x*255.) for x in Box.__colors[num] + background_color]
+					+ [0, 0])
 			glBegin(GL_QUAD_STRIP)
 			def vertex(x, y):
-				glTexCoord2d(0.25 + 0.25*x/Box.__aspect + 0.25*(1. - y), 0.5)
+				glTexCoord1d(0.25 + 0.25*x/Box.__aspect + 0.25*(1. - y) )
 				glVertex2d(x, y)
 			vertex(Box.__aspect, 0.)
 			vertex(Box.__aspect, 1.)
@@ -133,7 +133,7 @@ class Box:
 		glutBitmapString(GLUT_BITMAP_9_BY_15, self.__name)
 		glEndList()
 	def draw(self, y, height, color, win_width, win_height):
-		glEnable(GL_TEXTURE_2D)
+		glEnable(GL_TEXTURE_1D)
 		glDisable(GL_POLYGON_SMOOTH)
 		self.__draw(y, height, color, win_width, win_height)
 	def __draw(self, y, height, color, win_width, win_height):
@@ -220,8 +220,8 @@ class App:
 			background_color[0], background_color[1], background_color[2], 1.)
 		glEnable(GL_BLEND)
 		glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE)
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0)
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAX_LEVEL, 0)
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 	def __ensure_display_lists_created(self):
 		if App.__crosshair_display_list != None:
@@ -275,7 +275,7 @@ class App:
 		glClear(GL_COLOR_BUFFER_BIT)
 		self.box.draw(self.y, math.exp(self.log_scale), 0, self.width, self.height)
 		glColor3d(0., 0., 0.)
-		glDisable(GL_TEXTURE_2D)
+		glDisable(GL_TEXTURE_1D)
 		glPushMatrix()
 		glTranslated(self.width/2., self.height/2., 0.)
 		glCallList(App.__crosshair_display_list)

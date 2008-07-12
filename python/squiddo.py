@@ -206,9 +206,11 @@ class App:
 		self.height = default_height
 		self.mouse_x = 0
 		self.mouse_y = 0
+		self.__frame_count = 0
 		self.window = glutCreateWindow("Squiddo System Browser")
 		self.__ensure_display_lists_created()
 		self.box = Box('/')  # TODO: Make cross-platform
+		glutTimerFunc(1000, self.calc_framerate, None)
 		glutReshapeFunc(self.reshape)
 		glutDisplayFunc(self.draw)
 		glutMotionFunc(self.mouse_motion)
@@ -269,6 +271,7 @@ class App:
 		self.mouse_x = x
 		self.mouse_y = y
 	def draw(self):
+		self.__frame_count += 1
 		glClear(GL_COLOR_BUFFER_BIT)
 		self.box.draw(self.y, math.exp(self.log_scale), 0, self.width, self.height)
 		glColor3d(0., 0., 0.)
@@ -308,6 +311,10 @@ class App:
 		glutSetWindow(self.window)
 		glutPostRedisplay()
 		glutTimerFunc(30, self.update, None)
+	def calc_framerate(self, unused):
+		print self.__frame_count
+		self.__frame_count = 0
+		glutTimerFunc(1000, self.calc_framerate, None)
 	def draw_arrow(self, xt, yt, xh, yh):
 		'''\
 			Draw an arrow with tail at (xt, yt) and head at (xh, yh).

@@ -1,16 +1,21 @@
-#include <gtk/gtk.h>
-#include "squiddo-window.h"
+#include <GL/freeglut.h>
+#include <glib.h>
+#include <glib-object.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+#include "browser.h"
+#include "fs_server.h"
 
 int main(int argc, char *argv[]) {
-	GtkWidget *win;
-
-	gtk_init(&argc, &argv);
-	win = squiddo_window_new();
-	g_signal_connect(
-		G_OBJECT(win), "hide", G_CALLBACK(gtk_main_quit), NULL
+	g_thread_init(NULL);
+	g_type_init();
+	glutInit(&argc, argv);
+	glutSetOption(
+		GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_CONTINUE_EXECUTION
 	);
-	gtk_widget_show(win);
-
-	gtk_main();
+	g_thread_create(filesystem_server, NULL, FALSE, NULL);
+	browser = browser_new("/");
+	glutMainLoop();
 	return 0;
 }

@@ -26,11 +26,11 @@ const GLubyte crosshair_color[3] = { 0, 0, 0 };
 #define SQ(x) ({ typeof (x) __x = (x); __x*__x; })
 
 // Forward declare all static functions
-double get_root_box_height(Browser *self);
-void on_reshape(int width, int height);
-void on_mouse_motion(int x, int y);
-void on_mouse_button(int button, int state, int x, int y);
-void draw_arrow(int xt, int yt, int xh, int yh);
+static double get_root_box_height(Browser *self);
+static void on_reshape(int width, int height);
+static void on_mouse_motion(int x, int y);
+static void on_mouse_button(int button, int state, int x, int y);
+static void draw_arrow(int xt, int yt, int xh, int yh);
 
 // For now this is a singleton.  Since GLUT doesn't support user data in
 // callbacks, it's hard to support multiple browser windows.
@@ -74,7 +74,7 @@ void browser_destroy(Browser *self) {
 	g_free(self);
 }
 
-double get_root_box_height(Browser *self) {
+static double get_root_box_height(Browser *self) {
 	return self->height*exp(self->log_scale);
 }
 
@@ -146,7 +146,7 @@ void browser_draw(void) {
 	glutSwapBuffers();
 }
 
-void draw_arrow(int xt, int yt, int xh, int yh) {
+static void draw_arrow(int xt, int yt, int xh, int yh) {
 	glPushMatrix();
 		glTranslated(xt, yt, 0.0);
 		glRotated(atan2(yh - yt, xh - xt)*180.0/M_PI, 0.0, 0.0, 1.0);
@@ -170,7 +170,7 @@ void draw_arrow(int xt, int yt, int xh, int yh) {
 	glPopMatrix();
 }
 
-void on_reshape(int width, int height) {
+static void on_reshape(int width, int height) {
 	browser->y += (height - browser->height)/2.0;
 	browser->width = width;
 	browser->height = height;
@@ -181,12 +181,12 @@ void on_reshape(int width, int height) {
 	glMatrixMode(GL_MODELVIEW);
 }
 
-void on_mouse_motion(int x, int y) {
+static void on_mouse_motion(int x, int y) {
 	browser->mouse_x = x;
 	browser->mouse_y = y;
 }
 
-void on_mouse_button(int button, int state, int x, int y) {
+static void on_mouse_button(int button, int state, int x, int y) {
 	if (button == MODE_SWITCH_BUTTON && state == GLUT_DOWN) {
 		browser->moving = !browser->moving;
 		if (browser->moving) {

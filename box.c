@@ -27,9 +27,9 @@ const GLubyte box_colors[N_COLORS][3] =
 const GLubyte label_color[3] = { 0, 0, 0 };
 
 // Forward declare all static functions
-void background_vertex(double x, double y);
-void create_name_display_list(Box *self);
-void draw(
+static void background_vertex(double x, double y);
+static void create_name_display_list(Box *self);
+static void draw(
 	Box *self, double y, double height, guint color,
 	int win_width, int win_height
 );
@@ -38,7 +38,7 @@ GLuint bg_display_list_base;
 PangoFontMap *font_map;
 PangoContext *pango_context;
 
-void background_vertex(double x, double y) {
+static void background_vertex(double x, double y) {
 	glTexCoord1d(0.25 + 0.25*x/BOX_ASPECT + 0.25*(1.0 - y) );
 	glVertex2d(x, y);
 }
@@ -137,7 +137,7 @@ gint box_compare(const void *a, const void *b) {
 	return strcmp(box_a->collation_key, box_b->collation_key);
 }
 
-void create_name_display_list(Box *self) {
+static void create_name_display_list(Box *self) {
 	PangoLayout *layout = pango_layout_new(pango_context);
 	pango_layout_set_text(layout, self->name, -1);
 	PangoRectangle extents;
@@ -169,7 +169,7 @@ void box_draw(
 	draw(self, y, height, 0, win_width, win_height);
 }
 
-void draw(
+static void draw(
 	Box *self, double y, double height, guint color,
 	int win_width, int win_height
 ) {

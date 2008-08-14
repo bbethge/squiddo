@@ -80,7 +80,6 @@ void box_class_init(void) {
 			glDisable(GL_TEXTURE_1D);
 		glEndList();
 	}
-	glPixelZoom(1.0f, -1.0f);
 	font_map = pango_ft2_font_map_new();
 	pango_ft2_font_map_set_resolution(
 		PANGO_FT2_FONT_MAP(font_map), 100, 100
@@ -142,24 +141,29 @@ static void create_name_display_list(Box *self) {
 	pango_layout_set_text(layout, self->name, -1);
 	PangoRectangle extents;
 	pango_layout_get_pixel_extents(layout, &extents, NULL);
-	// Create an FT_Bitmap by hand
+	// Create an FT_Bitmap by hand since Freetype apparently won't do this
+	// for us.  (FT_Bitmap_New just creates an empty (0x0) bitmap, and
+	// FT_Bitmap_Done looks like it should only be used on bitmaps created
+	// by Freetype.)
 	FT_Bitmap bitmap;
 	bitmap.width = extents.width;
 	bitmap.rows = extents.height;
-	bitmap.pitch = (bitmap.width+3) & ~3;
+	int pitch = (bitmap.width+3) & ~3;  // Round up to multiple of 4
+	bitmap.pitch = -pitch;
 	bitmap.pixel_mode = FT_PIXEL_MODE_GRAY;
 	bitmap.num_grays = 256;
-	bitmap.buffer = g_new0(guchar, bitmap.pitch*bitmap.rows);
+	guchar *buffer = g_new0(guchar, pitch*bitmap.rows);
+	bitmap.buffer = buffer + (bitmap.rows-1)*pitch;
 	pango_ft2_render_layout(&bitmap, layout, -extents.x, -extents.y);
 	self->name_display_list = glGenLists(1);
 	glNewList(self->name_display_list, GL_COMPILE);
 		glDrawPixels(
 			bitmap.width, bitmap.rows, GL_ALPHA, GL_UNSIGNED_BYTE,
-			bitmap.buffer
+			buffer
 		);
 	glEndList();
+	g_free(buffer);
 	g_object_unref(G_OBJECT(layout) );
-	g_free(bitmap.buffer);
 }
 
 void box_draw(
@@ -237,10 +241,13 @@ static void draw(
 	guint first_box = 0;
 	if (y + height > win_height) {
 		first_box = (guint) ( (y+height-win_height) / item_height);
+		if (first_box >= self->n_items) return;
 	}
 	guint last_box = self->n_items;
 	if (y < 0.0) {
-		last_box = self->n_items - (guint) (-y/item_height);
+		guint offscreen_items = (guint) (-y/item_height);
+		if (offscreen_items >= self->n_items) return;
+		last_box = self->n_items - offscreen_items;
 	}
 	for (guint i = first_box; i < last_box; i++) {
 		draw(
